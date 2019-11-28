@@ -248,6 +248,11 @@ var (
 		Usage: "Percentage of cache memory allowance to use for trie pruning",
 		Value: 25,
 	}
+	CacheTrieDBFlag = cli.IntFlag{
+		Name:  "cache.triedb",
+		Usage: "Megabytes of memory allocated to triedb internal caching",
+		Value: eth.DefaultConfig.TrieDBCache,
+	}
 	TrieCacheGenFlag = cli.IntFlag{
 		Name:  "trie-cache-gens",
 		Usage: "Number of trie node generations to keep in memory",
@@ -1125,6 +1130,9 @@ func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *eth.Config) {
 
 	if ctx.GlobalIsSet(CacheFlag.Name) || ctx.GlobalIsSet(CacheGCFlag.Name) {
 		cfg.TrieCache = ctx.GlobalInt(CacheFlag.Name) * ctx.GlobalInt(CacheGCFlag.Name) / 100
+	}
+	if ctx.GlobalIsSet(CacheTrieDBFlag.Name) {
+		cfg.TrieDBCache = ctx.GlobalInt(CacheTrieDBFlag.Name)
 	}
 	if ctx.GlobalIsSet(DocRootFlag.Name) {
 		cfg.DocRoot = ctx.GlobalString(DocRootFlag.Name)

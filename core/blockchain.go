@@ -55,6 +55,7 @@ type CacheConfig struct {
 	Disabled      bool          // Whether to disable trie write caching (archive node)
 	TrieNodeLimit int           // Memory limit (MB) at which to flush the current in-memory trie to disk
 	TrieTimeLimit time.Duration // Time limit after which to flush the current in-memory trie to disk
+	TrieDBCache   int
 
 	BodyCacheLimit  int
 	BlockCacheLimit int
@@ -160,6 +161,7 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, chainConfig *par
 			MaxFutureBlocks: 256,
 			BadBlockLimit:   10,
 			TriesInMemory:   128,
+			TrieDBCache:     512,
 			DBGCInterval:    86400,
 			DBGCTimeout:     time.Minute,
 		}
@@ -175,7 +177,7 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, chainConfig *par
 		cacheConfig:    cacheConfig,
 		db:             db,
 		triegc:         prque.New(nil),
-		stateCache:     state.NewDatabase(db),
+		stateCache:     state.NewDatabaseWithCache(db, cacheConfig.TrieDBCache),
 		quit:           make(chan struct{}),
 		shouldPreserve: shouldPreserve,
 		bodyCache:      bodyCache,
@@ -199,6 +201,9 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, chainConfig *par
 		return nil, ErrNoGenesis
 	}
 	if err := bc.loadLastState(); err != nil {
+		return nil, err
+	}
+	if err := bc.loadStateCache(); err != nil {
 		return nil, err
 	}
 	// Check the current state of the block hashes and make sure that we do not have any of the bad blocks in our chain
@@ -284,6 +289,29 @@ func (bc *BlockChain) loadLastState() error {
 	log.Info("Loaded most recent local full block", "number", currentBlock.Number(), "hash", currentBlock.Hash(), "age", common.PrettyAge(time.Unix(currentBlock.Time().Int64(), 0)))
 	log.Info("Loaded most recent local fast block", "number", currentFastBlock.Number(), "hash", currentFastBlock.Hash(), "age", common.PrettyAge(time.Unix(currentFastBlock.Time().Int64(), 0)))
 
+	return nil
+}
+
+func (bc *BlockChain) loadStateCache() error {
+	log.Debug("Start load state cache")
+	t := time.Now()
+	tr, err := bc.stateCache.OpenTrie(bc.CurrentBlock().Root())
+	if err != nil {
+		return err
+	}
+
+	limit := (uint64(bc.cacheConfig.TrieDBCache*1024*1024) / 8) - 1024
+	c := 0
+	it := tr.NodeIterator(nil)
+	for it.Next(true) {
+		c++
+
+		if bc.stateCache.TrieDB().CacheCapacity() >= limit || time.Since(t) >= 30*time.Second {
+			break
+		}
+	}
+	bc.stateCache.TrieDB().ResetCacheStats()
+	log.Debug("Load state cache", "count", c, "limit", limit, "duration", time.Since(t))
 	return nil
 }
 
