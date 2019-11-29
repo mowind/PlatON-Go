@@ -69,6 +69,7 @@ type Database struct {
 	oldest     common.Hash                 // Oldest tracked node, flush-list head
 	newest     common.Hash                 // Newest tracked node, flush-list tail
 	cleans     *BigCache
+	useless    []map[string]struct{}
 
 	preimages map[common.Hash][]byte // Preimages of nodes from the secure trie
 	seckeybuf [secureKeyLength]byte  // Ephemeral buffer for calculating preimage keys
@@ -495,21 +496,16 @@ func (db *Database) DereferenceDB(root common.Hash) {
 	defer db.lock.Unlock()
 
 	nodes, storage, start := len(db.nodes), db.nodesSize, time.Now()
-	batch := db.diskdb.NewBatch()
+	useless := make(map[string]struct{})
 	clearFn := func(hash []byte) {
-		batch.Delete(hash)
-		if batch.ValueSize() > ethdb.IdealBatchSize {
-			batch.Write()
-			batch.Reset()
-		}
+		useless[string(hash)] = struct{}{}
 		if db.cleans != nil {
 			db.cleans.Delele(string(hash[:]))
 		}
 	}
 	db.dereference(root, common.Hash{}, clearFn)
 
-	batch.Write()
-
+	db.useless = append(db.useless, useless)
 	db.gcnodes += uint64(nodes - len(db.nodes))
 	db.gcsize += storage - db.nodesSize
 	db.gctime += time.Since(start)
@@ -520,6 +516,56 @@ func (db *Database) DereferenceDB(root common.Hash) {
 
 	log.Debug("Dereferenced trie from memory database", "nodes", nodes-len(db.nodes), "size", storage-db.nodesSize, "time", time.Since(start),
 		"gcnodes", db.gcnodes, "gcsize", db.gcsize, "gctime", db.gctime, "livenodes", len(db.nodes), "livesize", db.nodesSize)
+}
+
+func (db *Database) uselessTotal() int {
+	db.lock.RLock()
+	defer db.lock.RUnlock()
+	sum := 0
+	for _, m := range db.useless {
+		sum += len(m)
+	}
+	return sum
+}
+
+func (db *Database) ResetUseless() {
+	db.lock.Lock()
+	defer db.lock.Unlock()
+	db.useless = nil
+}
+
+func (db *Database) UselessGC(num int) {
+	db.lock.Lock()
+	defer db.lock.Unlock()
+	var (
+		start = time.Now()
+		total = 0
+		batch = db.diskdb.NewBatch()
+		size  = 0
+	)
+
+	for i, m := range db.useless {
+		if total >= num {
+			break
+		}
+
+		for k, _ := range m {
+			if db.nodes[common.BytesToHash([]byte(k))] == nil {
+				batch.Delete([]byte(k))
+			}
+			if batch.ValueSize() > ethdb.IdealBatchSize {
+				batch.Write()
+				batch.Reset()
+			}
+			size++
+		}
+
+		db.useless[i] = nil
+		total++
+	}
+	db.useless = db.useless[total:]
+	batch.Write()
+	log.Debug("UselessGC clean node", "size", size, "elapse", time.Since(start))
 }
 
 // Dereference removes an existing reference from a root node.
@@ -832,11 +878,12 @@ func (db *Database) commit(hash common.Hash, batch ethdb.Batch) error {
 			return err
 		}
 	}
-	if err := batch.Put(hash[:], node.rlp()); err != nil {
+	enc := node.rlp()
+	if err := batch.Put(hash[:], enc); err != nil {
 		return err
 	}
 	if db.cleans != nil {
-		db.cleans.Set(string(hash[:]), node.rlp())
+		db.cleans.Set(string(hash[:]), enc)
 	}
 	// If we've reached an optimal batch size, commit and start over
 	if batch.ValueSize() >= ethdb.IdealBatchSize {
