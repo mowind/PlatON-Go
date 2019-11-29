@@ -13,6 +13,7 @@ const (
 	// prime64 FNVa prime value. See https://en.wikipedia.org/wiki/Fowler–Noll–Vo_hash_function#FNV-1a_hash
 	prime64 = 1099511628211
 
+	// maxValueSize The maximum size for entry value.
 	maxValueSize = 1024
 )
 
@@ -71,6 +72,7 @@ func (c *LRU) Add(key string, value []byte) bool {
 	entry := c.evictList.PushFront(ent)
 	c.items[key] = entry
 	c.capacity += uint64(len(value))
+	c.capacity += uint64(len(key))
 
 	evict := c.capacity > c.maxCapacity
 	// Verify size not exceeded
@@ -124,6 +126,7 @@ func (c *LRU) removeElement(e *list.Element) {
 	kv := e.Value.(*entry)
 	delete(c.items, kv.key)
 	c.capacity -= uint64(len(kv.value))
+	c.capacity -= uint64(len(kv.key))
 }
 
 type Stats struct {
@@ -225,7 +228,7 @@ func (c *BigCache) Capacity() uint64 {
 
 func (c *BigCache) Stats() Stats {
 	var stats Stats
-	stats.Hits = c.hits
+	stats.Hits = atomic.LoadInt64(&c.hits)
 	for _, shard := range c.shards {
 		s := shard.Stats()
 		stats.Hits += s.Hits
