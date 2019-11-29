@@ -67,7 +67,7 @@ type CacheConfig struct {
 	DBGCInterval uint64            // Block interval for database garbage collection
 	DBGCTimeout  time.Duration
 	DBGCMpt      bool
-	DBGCBlock    uint64
+	DBGCBlock    int
 }
 
 // mining related configuration
@@ -983,7 +983,7 @@ func (bc *BlockChain) WriteBlockWithState(block *types.Block, receipts []*types.
 
 			triedb.DereferenceDB(currentBlock.Root())
 
-			if block.NumberU64() > bc.cacheConfig.DBGCBlock {
+			if triedb.UselessSize() > bc.cacheConfig.DBGCBlock {
 				triedb.UselessGC(1)
 			}
 

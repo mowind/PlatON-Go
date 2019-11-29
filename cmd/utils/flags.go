@@ -596,7 +596,7 @@ var (
 		Name:  "db.gc_mpt",
 		Usage: "Enables database garbage collection MPT",
 	}
-	DBGCBlockFlag = cli.Uint64Flag{
+	DBGCBlockFlag = cli.IntFlag{
 		Name:  "db.gc_block",
 		Usage: "Number of cache block states, default 10",
 		Value: eth.DefaultConfig.DBGCBlock,
@@ -1189,7 +1189,7 @@ func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *eth.Config) {
 		cfg.DBGCMpt = ctx.GlobalBool(DBGCMptFlag.Name)
 	}
 	if ctx.GlobalIsSet(DBGCBlockFlag.Name) {
-		b := ctx.GlobalUint64(DBGCBlockFlag.Name)
+		b := ctx.GlobalInt(DBGCBlockFlag.Name)
 		if b > 0 {
 			cfg.DBGCBlock = b
 		}

@@ -528,6 +528,10 @@ func (db *Database) uselessTotal() int {
 	return sum
 }
 
+func (db *Database) UselessSize() int {
+	return len(db.useless)
+}
+
 func (db *Database) ResetUseless() {
 	db.lock.Lock()
 	defer db.lock.Unlock()
@@ -578,8 +582,14 @@ func (db *Database) Dereference(root common.Hash) {
 	db.lock.Lock()
 	defer db.lock.Unlock()
 
+	cleanFn := func(hash []byte) {
+		if db.cleans != nil {
+			db.cleans.Delele(string(hash))
+		}
+	}
+
 	nodes, storage, start := len(db.nodes), db.nodesSize, time.Now()
-	db.dereference(root, common.Hash{}, nil)
+	db.dereference(root, common.Hash{}, cleanFn)
 
 	db.gcnodes += uint64(nodes - len(db.nodes))
 	db.gcsize += storage - db.nodesSize
