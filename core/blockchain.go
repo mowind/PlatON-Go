@@ -203,9 +203,8 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, chainConfig *par
 	if err := bc.loadLastState(); err != nil {
 		return nil, err
 	}
-	if err := bc.loadStateCache(); err != nil {
-		return nil, err
-	}
+
+	bc.loadStateCache()
 	// Check the current state of the block hashes and make sure that we do not have any of the bad blocks in our chain
 	//for hash := range BadHashes {
 	//	if header := bc.GetHeaderByHash(hash); header != nil {
@@ -292,27 +291,29 @@ func (bc *BlockChain) loadLastState() error {
 	return nil
 }
 
-func (bc *BlockChain) loadStateCache() error {
-	log.Debug("Start load state cache")
-	t := time.Now()
-	tr, err := bc.stateCache.OpenTrie(bc.CurrentBlock().Root())
-	if err != nil {
-		return err
-	}
-
-	limit := (uint64(bc.cacheConfig.TrieDBCache*1024*1024) / 8) - 1024
-	c := 0
-	it := tr.NodeIterator(nil)
-	for it.Next(true) {
-		c++
-
-		if bc.stateCache.TrieDB().CacheCapacity() >= limit || time.Since(t) >= 30*time.Second {
-			break
+func (bc *BlockChain) loadStateCache() {
+	go func() {
+		log.Debug("Start load state cache")
+		t := time.Now()
+		tr, err := bc.stateCache.OpenTrie(bc.CurrentBlock().Root())
+		if err != nil {
+			log.Error("Failed to open trie", "err", err)
+			return
 		}
-	}
-	bc.stateCache.TrieDB().ResetCacheStats()
-	log.Debug("Load state cache", "count", c, "limit", limit, "duration", time.Since(t))
-	return nil
+
+		limit := (uint64(bc.cacheConfig.TrieDBCache*1024*1024) / 8) - 1024
+		c := 0
+		it := tr.NodeIterator(nil)
+		for it.Next(true) {
+			c++
+
+			if bc.stateCache.TrieDB().CacheCapacity() >= limit || time.Since(t) >= 30*time.Second {
+				break
+			}
+		}
+		bc.stateCache.TrieDB().ResetCacheStats()
+		log.Debug("Load state cache", "count", c, "limit", limit, "duration", time.Since(t))
+	}()
 }
 
 // SetHead rewinds the local chain to a new head. In the case of headers, everything
