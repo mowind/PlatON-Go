@@ -18,7 +18,7 @@ func TestBigCache(t *testing.T) {
 	assert.True(t, ok)
 
 	assert.True(t, bc.Len() == 1)
-	assert.True(t, bc.Capacity() == 6)
+	assert.True(t, bc.Capacity() == 10)
 
 	stats := bc.Stats()
 	assert.True(t, stats.Hits == 1)
@@ -59,7 +59,7 @@ func TestBigCache(t *testing.T) {
 	v, _ = bc.Get("test")
 	assert.Equal(t, v, []byte("123"))
 
-	bc = NewBigCache(8, 1)
+	bc = NewBigCache(20, 1)
 
 	bc.Set("test", []byte("111111"))
 	v, _ = bc.Get("test")
