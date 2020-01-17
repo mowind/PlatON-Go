@@ -76,6 +76,8 @@ type Trie struct {
 	// new nodes are tagged with the current generation and unloaded
 	// when their generation is older than than cachegen-cachelimit.
 	cachegen, cachelimit uint16
+
+	dag Dagger
 }
 
 // SetCacheLimit sets the number of 'cache generations' to keep.
@@ -103,6 +105,7 @@ func New(root common.Hash, db *Database) (*Trie, error) {
 	trie := &Trie{
 		db:           db,
 		originalRoot: root,
+		dag:          newTrieDag(),
 	}
 	// If root is not empty, restore the node from the DB (the whole tree)
 	if root != (common.Hash{}) && root != emptyRoot {
@@ -208,12 +211,16 @@ func (t *Trie) TryUpdate(key, value []byte) error {
 		if err != nil {
 			return err
 		}
+		t.dag.deleteByNode(nil, t.root)
+		t.dag.add(nil, nil, n)
 		t.root = n
 	} else {
 		_, n, err := t.delete(t.root, nil, k)
 		if err != nil {
 			return err
 		}
+		t.dag.deleteByNode(nil, t.root)
+		t.dag.add(nil, nil, n)
 		t.root = n
 	}
 	return nil
@@ -224,6 +231,7 @@ func (t *Trie) insert(n node, prefix, key []byte, value node) (bool, node, error
 		if v, ok := n.(valueNode); ok {
 			return !bytes.Equal(v, value.(valueNode)), value, nil
 		}
+		t.dag.deleteByNode(prefix, value)
 		return true, value, nil
 	}
 	switch n := n.(type) {
@@ -236,8 +244,11 @@ func (t *Trie) insert(n node, prefix, key []byte, value node) (bool, node, error
 			if !dirty || err != nil {
 				return false, n, err
 			}
+			t.dag.deleteByNode(prefix, n)
+			t.dag.add(append(prefix, n.Key...), append(prefix, n.Key...), nn)
 			return true, &shortNode{n.Key, nn, t.newFlag()}, nil
 		}
+		t.dag.deleteByNode(prefix, n)
 		// Otherwise branch out at the index where they differ.
 		branch := &fullNode{flags: t.newFlag()}
 		var err error
@@ -245,15 +256,20 @@ func (t *Trie) insert(n node, prefix, key []byte, value node) (bool, node, error
 		if err != nil {
 			return false, nil, err
 		}
+		t.dag.add(append(prefix, concat(key[:matchlen], fullNodeSuffix...)...), append(prefix, n.Key[:matchlen+1]...), branch.Children[n.Key[matchlen]])
+
 		_, branch.Children[key[matchlen]], err = t.insert(nil, append(prefix, key[:matchlen+1]...), key[matchlen+1:], value)
 		if err != nil {
 			return false, nil, err
 		}
+		t.dag.add(append(prefix, concat(key[:matchlen], fullNodeSuffix...)...), append(prefix, key[:matchlen+1]...), branch.Children[key[matchlen]])
+
 		// Replace this shortNode with the branch if it occurs at index 0.
 		if matchlen == 0 {
 			return true, branch, nil
 		}
 		// Otherwise, replace it with a short node leading up to the branch.
+		t.dag.add(append(prefix, key[:matchlen]...), append(prefix, key[:matchlen]...), branch)
 		return true, &shortNode{key[:matchlen], branch, t.newFlag()}, nil
 
 	case *fullNode:
@@ -264,9 +280,12 @@ func (t *Trie) insert(n node, prefix, key []byte, value node) (bool, node, error
 		n = n.copy()
 		n.flags = t.newFlag()
 		n.Children[key[0]] = nn
+		t.dag.deleteByNode(prefix, n)
+		t.dag.add(append(prefix, fullNodeSuffix...), append(prefix, byte(key[0])), nn)
 		return true, n, nil
 
 	case nil:
+		t.dag.deleteByKey(append(prefix, key...))
 		return true, &shortNode{key, value, t.newFlag()}, nil
 
 	case hashNode:
@@ -303,6 +322,8 @@ func (t *Trie) TryDelete(key []byte) error {
 	if err != nil {
 		return err
 	}
+	t.dag.deleteByNode(nil, t.root)
+	t.dag.add(nil, nil, n)
 	t.root = n
 	return nil
 }
@@ -318,6 +339,7 @@ func (t *Trie) delete(n node, prefix, key []byte) (bool, node, error) {
 			return false, n, nil // don't replace n on mismatch
 		}
 		if matchlen == len(key) {
+			t.dag.deleteByNode(prefix, n)
 			return true, nil, nil // remove n entirely for whole matches
 		}
 		// The key is longer than n.Key. Remove the remaining suffix
@@ -328,6 +350,7 @@ func (t *Trie) delete(n node, prefix, key []byte) (bool, node, error) {
 		if !dirty || err != nil {
 			return false, n, err
 		}
+		t.dag.deleteByNode(prefix, n)
 		switch child := child.(type) {
 		case *shortNode:
 			// Deleting from the subtrie reduced it to another
@@ -336,8 +359,13 @@ func (t *Trie) delete(n node, prefix, key []byte) (bool, node, error) {
 			// always creates a new slice) instead of append to
 			// avoid modifying n.Key since it might be shared with
 			// other nodes.
+			t.dag.deleteByNode(append(prefix, concat(n.Key, child.Key...)...), child.Val)
+			t.dag.deleteByNode(append(prefix, n.Key...), child)
+			t.dag.add(append(prefix, concat(n.Key, child.Key...)...), append(prefix, concat(n.Key, child.Key...)...), child.Val)
 			return true, &shortNode{concat(n.Key, child.Key...), child.Val, t.newFlag()}, nil
 		default:
+			t.dag.deleteByNode(append(prefix, n.Key...), child)
+			t.dag.add(append(prefix, n.Key...), append(prefix, n.Key...), child)
 			return true, &shortNode{n.Key, child, t.newFlag()}, nil
 		}
 
@@ -371,6 +399,7 @@ func (t *Trie) delete(n node, prefix, key []byte) (bool, node, error) {
 			}
 		}
 		if pos >= 0 {
+			t.dag.deleteByKey(append(prefix, fullNodeSuffix...))
 			if pos != 16 {
 				// If the remaining entry is a short node, it replaces
 				// n and its key gets the missing nibble tacked to the
@@ -384,14 +413,19 @@ func (t *Trie) delete(n node, prefix, key []byte) (bool, node, error) {
 				}
 				if cnode, ok := cnode.(*shortNode); ok {
 					k := append([]byte{byte(pos)}, cnode.Key...)
+					t.dag.deleteByNode(append(prefix, byte(pos)), cnode)
+					t.dag.add(append(prefix, k...), append(prefix, k...), cnode.Val)
 					return true, &shortNode{k, cnode.Val, t.newFlag()}, nil
 				}
 			}
 			// Otherwise, n is replaced by a one-nibble short node
 			// containing the child.
+			t.dag.deleteByNode(append(prefix, byte(pos)), n.Children[pos])
+			t.dag.add(append(prefix, byte(pos)), append(prefix, byte(pos)), n.Children[pos])
 			return true, &shortNode{[]byte{byte(pos)}, n.Children[pos], t.newFlag()}, nil
 		}
 		// n still contains at least two values and cannot be reduced.
+		t.dag.add(append(prefix, fullNodeSuffix...), append(prefix, key[0]), nn)
 		return true, n, nil
 
 	case valueNode:
@@ -478,6 +512,18 @@ func (t *Trie) hashRoot(db *Database, onleaf LeafCallback) (node, node, error) {
 	defer returnHasherToPool(h)
 	return h.hash(t.root, db, true)
 }
+
+func (t *Trie) hashRootInParallel(db *Database, onleaf LeafCallback) (node, node, error) {
+	if t.root == nil {
+		return hashNode(emptyRoot.Bytes()), nil, nil
+	}
+
+	if t.dag.size() == 0 {
+		return t.hashRoot(db, onleaf)
+	}
+	return t.dag.hash(db, onleaf, true)
+}
+
 func (t *Trie) DeepCopyTrie() *Trie {
 	cpyRoot := t.root
 	switch n := t.root.(type) {
