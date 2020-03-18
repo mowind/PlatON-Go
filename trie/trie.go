@@ -556,7 +556,7 @@ func (t *Trie) Hash() common.Hash {
 	tm := time.Now()
 	hash, cached, _ := t.hashRoot(nil, nil)
 	if time.Since(tm) >= 10*time.Millisecond {
-		log.Error("Trie Hash", "duration", time.Since(tm))
+		log.Debug("Trie Hash", "duration", time.Since(tm))
 	}
 	t.root = cached
 	return common.BytesToHash(hash.(hashNode))
@@ -569,7 +569,7 @@ func (t *Trie) ParallelHash2() common.Hash {
 		t.root = cached
 	}
 	if time.Since(tm) >= 10*time.Millisecond {
-		log.Error("Trie Parallel Hash", "duration", time.Since(tm))
+		log.Debug("Trie Parallel Hash", "duration", time.Since(tm))
 	}
 	return common.BytesToHash(hash.(hashNode))
 }
@@ -583,7 +583,7 @@ func (t *Trie) Commit(onleaf LeafCallback) (root common.Hash, err error) {
 	tm := time.Now()
 	hash, cached, err := t.hashRoot(t.db, onleaf)
 	if time.Since(tm) >= 10*time.Millisecond {
-		log.Error("Trie Commit", "duration", time.Since(tm))
+		log.Debug("Trie Commit", "duration", time.Since(tm))
 	}
 	if err != nil {
 		return common.Hash{}, err
@@ -604,7 +604,7 @@ func (t *Trie) ParallelCommit2(onleaf LeafCallback) (root common.Hash, err error
 		return common.Hash{}, err
 	}
 	if time.Since(tm) >= 10*time.Millisecond {
-		log.Error("Trie Parallel Commit", "duration", time.Since(tm))
+		log.Debug("Trie Parallel Commit", "duration", time.Since(tm))
 	}
 	t.root = cached
 	t.cachegen++
@@ -628,13 +628,13 @@ func (t *Trie) parallelHashRoot2(db *Database, onleaf LeafCallback) (node, node,
 		return hashNode(emptyRoot.Bytes()), nil, nil
 	}
 	if len(t.dag.nodes) > 0 {
-		log.Error("Paralle hash root", "dag", fmt.Sprintf("%p", t.dag), "dag.size", len(t.dag.nodes))
+		log.Debug("Paralle hash root", "dag", fmt.Sprintf("%p", t.dag), "dag.size", len(t.dag.nodes))
 		t.dag.cachegen = t.cachegen
 		t.dag.cachelimit = t.cachelimit
 		//t.dag.init(t.root)
 		return t.dag.hash(db, true, onleaf)
 	} else {
-		log.Error("Serial hash root")
+		log.Debug("Serial hash root")
 		return t.hashRoot(db, onleaf)
 	}
 }
