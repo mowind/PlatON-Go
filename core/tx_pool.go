@@ -988,7 +988,6 @@ func generateAccount(state *state.StateDB, size int) []*PriAccount {
 		privateKey, _ := crypto.GenerateKey()
 		address := crypto.PubkeyToAddress(privateKey.PublicKey)
 		addrs[i] = &PriAccount{privateKey, 0, address}
-		log.Warn("account list", "index", i, "address", address.Hex())
 	}
 	return addrs
 }
@@ -1023,8 +1022,11 @@ func (pool *TxPool) MakeTransaction() error {
 	}
 	log.Warn("MakeTransaction begin prepare account finish")
 
-	time.Sleep(10 * time.Second)
+	time.Sleep(120 * time.Second)
 
+	for i, account := range accounts {
+		log.Debug("account info", "index", i, "balance", pool.currentState.GetBalance(account.Address).Uint64())
+	}
 	//	add := common.HexToAddress("0x021875a46201a572fa092e88fab46b8be6a88a13")
 	amount := new(big.Int).SetInt64(1)
 
