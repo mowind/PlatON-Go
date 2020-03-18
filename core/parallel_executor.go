@@ -1,6 +1,7 @@
 package core
 
 import (
+	"fmt"
 	"math/big"
 	"sync"
 	"time"
@@ -111,10 +112,10 @@ func (exe *Executor) PackBlockTxs(ctx *PackBlockContext) (timeout bool, err erro
 			//exe.ctx.GetHeader().GasUsed = ctx.GetBlockGasUsed()
 		}
 		ctx.state.Finalise(true)
-		/*for i, tx := range ctx.packedTxList {
+		for i, tx := range ctx.packedTxList {
 			//log.Debug(fmt.Sprintf("End to pack block, fromBalance: %d, toBalance: %d", ctx.state.GetBalance(*tx.GetFromAddr()), ctx.state.GetBalance(*tx.To())))
 			log.Debug(fmt.Sprintf("tx executed parallel, Idx: %d, fromAddr: %s, fromBalance: %d, fromNonce: %d, toAddr: %s, toBalance: %d, txAmount: %d, minerBalance: %d", i, tx.GetFromAddr().Hex(), ctx.state.GetBalance(*tx.GetFromAddr()).Uint64(), ctx.state.GetNonce(*tx.GetFromAddr()), tx.To().Hex(), ctx.state.GetBalance(*tx.To()).Uint64(), tx.Value().Uint64(), ctx.state.GetBalance(ctx.header.Coinbase)))
-		}*/
+		}
 
 	}
 	return isTimeout, nil
@@ -240,7 +241,7 @@ func (exe *Executor) executeParallel(arg interface{}) {
 	toObj := exe.ctx.GetState().GetOrNewParallelStateObject(*msg.To())
 	toObj.AddBalance(msg.Value())
 
-	//log.Debug(fmt.Sprintf("txIdx: %d executed, fromAddr: %s, balance: %d, toAddr: %s, balance: %d, txAmount: %d", idx, msg.From().Hex(), fromObj.GetBalance().Uint64(), msg.To().Hex(), toObj.GetBalance().Uint64(), msg.Value().Uint64()))
+	log.Debug(fmt.Sprintf("txIdx: %d executed, fromAddr: %s, balance: %d, toAddr: %s, balance: %d, txAmount: %d", idx, msg.From().Hex(), fromObj.GetBalance().Uint64(), msg.To().Hex(), toObj.GetBalance().Uint64(), msg.Value().Uint64()))
 
 	exe.buildTransferSuccessResult(idx, fromObj, toObj, intrinsicGas, minerEarnings)
 	return

@@ -1028,6 +1028,9 @@ func (pool *TxPool) MakeTransaction() error {
 	for i, account := range accounts {
 		log.Debug("account info", "index", i, "address", account.Address, "balance", pool.currentState.GetBalance(account.Address).Uint64())
 	}
+
+	panic("game over")
+
 	//	add := common.HexToAddress("0x021875a46201a572fa092e88fab46b8be6a88a13")
 	amount := new(big.Int).SetInt64(1)
 
