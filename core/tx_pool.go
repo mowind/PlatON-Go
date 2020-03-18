@@ -1009,7 +1009,8 @@ func (pool *TxPool) MakeTransaction() error {
 
 	gasPrice := new(big.Int).SetInt64(10)
 	nonce := uint64(0)
-	for _, account := range accounts {
+	for idx, account := range accounts {
+		log.Debug("init account balance", "index", idx, "address", account.Address)
 		tx := types.NewTransaction(nonce, account.Address, amountEach, 21000, gasPrice, nil)
 		newTx, err := types.SignTx(tx, singine, pri)
 		if err != nil {
