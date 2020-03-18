@@ -1025,7 +1025,7 @@ func (pool *TxPool) MakeTransaction() error {
 	time.Sleep(120 * time.Second)
 
 	for i, account := range accounts {
-		log.Debug("account info", "index", i, "balance", pool.currentState.GetBalance(account.Address).Uint64())
+		log.Debug("account info", "index", i, "address", account.Address, "balance", pool.currentState.GetBalance(account.Address).Uint64())
 	}
 	//	add := common.HexToAddress("0x021875a46201a572fa092e88fab46b8be6a88a13")
 	amount := new(big.Int).SetInt64(1)
@@ -1079,6 +1079,7 @@ func (pool *TxPool) MakeTransaction() error {
 			}
 			fromAccount := accounts[fromIdx]
 			toAccount := accounts[toIdx]
+			log.Debug("make tx", "fromIdx", fromIdx, "toIdx", toIdx)
 			tx := types.NewTransaction(fromAccount.Nonce, toAccount.Address, amount, 21000, gasPrice, nil)
 			newTx, err := types.SignTx(tx, singine, fromAccount.Priv)
 			if err != nil {
