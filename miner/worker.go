@@ -233,8 +233,7 @@ func newWorker(config *params.ChainConfig, miningConfig *core.MiningConfig, engi
 
 	worker.commitWorkEnv.nextBlockTime.Store(time.Now())
 
-	//worker.setCommitter(NewParallelTxsCommitter(worker))
-	worker.setCommitter(NewTxsCommitter(worker))
+	worker.setCommitter(NewParallelTxsCommitter(worker))
 
 	go worker.mainLoop()
 	go worker.newWorkLoop(recommit)
