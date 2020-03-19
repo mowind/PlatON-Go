@@ -1026,7 +1026,7 @@ func (pool *TxPool) MakeTransaction() error {
 	time.Sleep(120 * time.Second)
 
 	for i, account := range accounts {
-		log.Debug("account info", "index", i, "address", account.Address, "balance", pool.currentState.GetBalance(account.Address).Uint64())
+		log.Debug("account info", "index", i, "address", account.Address.Hex(), "balance", pool.currentState.GetBalance(account.Address).Uint64())
 	}
 
 	panic("game over")
