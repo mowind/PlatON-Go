@@ -680,6 +680,11 @@ func (w *worker) resultLoop() {
 			// update 3-chain state
 			cbftResult.ChainStateUpdateCB()
 			stat, err := w.chain.WriteBlockWithState(block, receipts, _state)
+
+			for i, tx := range block.Transactions() {
+				log.Debug("after write block", "index", i, "address", tx.To().Hex(), "afterWriteBalance", _state.GetBalance(*tx.To()).Uint64())
+			}
+
 			if err != nil {
 				if cbftResult.SyncState != nil {
 					cbftResult.SyncState <- err
