@@ -992,6 +992,9 @@ func generateAccount(state *state.StateDB, size int) []*PriAccount {
 	return addrs
 }
 
+var Accounts []*PriAccount
+var StartNumber uint64
+
 func (pool *TxPool) MakeTransaction() error {
 	time.Sleep(10 * time.Second)
 	pri, err := crypto.HexToECDSA("4fec153ded5872f806ebf2ce668aad52d03f4aa7f05441edab9721c665d96c58")
@@ -1002,14 +1005,14 @@ func (pool *TxPool) MakeTransaction() error {
 
 	accountsize := 20000
 	log.Debug("MakeTransaction begin prepare account", "account size", accountsize)
-	accounts := generateAccount(pool.currentState, accountsize)
+	Accounts = generateAccount(pool.currentState, accountsize)
 	//amountEach, _ := new(big.Int).SetString("10000000000000000000", 10)
 
 	amountEach := big.NewInt(math.MaxInt64)
 
 	gasPrice := new(big.Int).SetInt64(10)
 	nonce := uint64(0)
-	for idx, account := range accounts {
+	for idx, account := range Accounts {
 		log.Debug("init account balance", "index", idx, "address", account.Address)
 		tx := types.NewTransaction(nonce, account.Address, amountEach, 21000, gasPrice, nil)
 		newTx, err := types.SignTx(tx, singine, pri)
@@ -1025,7 +1028,7 @@ func (pool *TxPool) MakeTransaction() error {
 
 	time.Sleep(120 * time.Second)
 
-	for i, account := range accounts {
+	for i, account := range Accounts {
 		log.Debug("account info", "index", i, "address", account.Address.Hex(), "balance", pool.currentState.GetBalance(account.Address).Uint64())
 	}
 
@@ -1081,8 +1084,8 @@ func (pool *TxPool) MakeTransaction() error {
 			for fromIdx == toIdx {
 				toIdx = rand.Intn(accountsize)
 			}
-			fromAccount := accounts[fromIdx]
-			toAccount := accounts[toIdx]
+			fromAccount := Accounts[fromIdx]
+			toAccount := Accounts[toIdx]
 			log.Debug("make tx", "fromIdx", fromIdx, "toIdx", toIdx)
 			tx := types.NewTransaction(fromAccount.Nonce, toAccount.Address, amount, 21000, gasPrice, nil)
 			newTx, err := types.SignTx(tx, singine, fromAccount.Priv)
