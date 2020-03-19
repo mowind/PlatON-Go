@@ -148,7 +148,7 @@ func (self *StateDB) DumpStorage(check bool) {
 		panic(fmt.Sprintf("new statdb error, root:%s, error:%s", self.Root().String(), err.Error()))
 	}
 	for addr, obj := range self.stateObjects {
-		log.Debug("dump storage", "addr", addr.String())
+		log.Debug("dump storage", "addr", addr.String(), "dumpBalance", obj.Balance().Uint64())
 		for k, v := range obj.originStorage {
 			if _, ok := obj.dirtyStorage[k]; !ok {
 				vk, ok := obj.originValueStorage[v]
