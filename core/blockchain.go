@@ -1116,7 +1116,7 @@ func (bc *BlockChain) WriteBlockWithState(block *types.Block, receipts []*types.
 		bc.cleaner.Cleanup()
 	}
 
-	state.DumpStorage(false)
+	//state.DumpStorage(false)
 
 	return status, nil
 }
