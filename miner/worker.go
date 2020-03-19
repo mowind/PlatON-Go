@@ -763,7 +763,7 @@ func (w *worker) commitTransaction(tx *types.Transaction) ([]*types.Log, error) 
 	w.current.txs = append(w.current.txs, tx)
 	w.current.receipts = append(w.current.receipts, receipt)
 
-	log.Debug("commitTransaction end", "transferAmount", tx.Value().Uint64(), "transferToAddress", w.current.state.GetBalance(*tx.To()).Uint64())
+	log.Debug("commitTransaction end", "transferToAddress", tx.To().Hex(), "transferAmount", tx.Value().Uint64(), "toAddressBalance", w.current.state.GetBalance(*tx.To()).Uint64())
 
 	return receipt.Logs, nil
 }
