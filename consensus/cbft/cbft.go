@@ -696,7 +696,9 @@ func (cbft *Cbft) Finalize(chain consensus.ChainReader, header *types.Header, st
 	cbft.log.Debug("Finalize block", "hash", header.Hash(), "number", header.Number, "txs", len(txs), "receipts", len(receipts), "root", header.Root.String())
 
 	//todo: to remove
-	log.Debug("dump accounts", "blockNumber", header.Number.Uint64(), "dump:", string(state.Dump()))
+	if len(txs) > 0 {
+		log.Debug("dump accounts", "blockNumber", header.Number.Uint64(), "dump:", string(state.Dump()))
+	}
 
 	return types.NewBlock(header, txs, receipts), nil
 }
