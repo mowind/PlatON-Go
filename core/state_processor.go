@@ -79,8 +79,6 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 		}
 		receipts = append(receipts, receipt)
 		allLogs = append(allLogs, receipt.Logs...)
-
-		log.Debug("transfer end", "transferAmount", tx.Value().Uint64(), "transferToAddress", statedb.GetBalance(*tx.To()).Uint64())
 	}
 
 	if bcr != nil {

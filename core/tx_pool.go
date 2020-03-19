@@ -1026,8 +1026,7 @@ func (pool *TxPool) MakeTransaction() error {
 	}
 	log.Warn("MakeTransaction begin prepare account finish")
 
-	time.Sleep(120 * time.Second)
-
+	time.Sleep(60 * time.Second)
 	for i, account := range Accounts {
 		log.Debug("account info", "index", i, "address", account.Address.Hex(), "balance", pool.currentState.GetBalance(account.Address).Uint64())
 	}

@@ -682,23 +682,6 @@ func (w *worker) resultLoop() {
 			// update 3-chain state
 			cbftResult.ChainStateUpdateCB()
 			stat, err := w.chain.WriteBlockWithState(block, receipts, _state)
-			if len(block.Transactions()) > 0 {
-				if StartNumber == 0 {
-					StartNumber = block.NumberU64()
-				}
-				for i, tx := range block.Transactions() {
-					log.Debug("after write block", "index", i, "address", tx.To().Hex(), "afterWriteBalance", _state.GetBalance(*tx.To()).Uint64())
-				}
-			} else {
-				if block.NumberU64() > StartNumber {
-					for i, account := range core.Accounts {
-						if _state.GetBalance(account.Address).Uint64() == 0 {
-							log.Debug("new block account info", "index", i, "address", account.Address.Hex(), "NewBlockBalance", _state.GetBalance(account.Address).Uint64())
-						}
-					}
-				}
-			}
-
 			if err != nil {
 				if cbftResult.SyncState != nil {
 					cbftResult.SyncState <- err

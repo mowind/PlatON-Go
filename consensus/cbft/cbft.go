@@ -692,26 +692,12 @@ func (cbft *Cbft) Prepare(chain consensus.ChainReader, header *types.Header) err
 // Finalize implements consensus.Engine, no block
 // rewards given, and returns the final block.
 func (cbft *Cbft) Finalize(chain consensus.ChainReader, header *types.Header, state *state.StateDB, txs []*types.Transaction, receipts []*types.Receipt) (*types.Block, error) {
-
-	before := make([]uint64, len(txs))
-	for i, tx := range txs {
-		before[i] = state.GetBalance(*tx.To()).Uint64()
-	}
-
 	header.Root = state.IntermediateRoot(true)
-
-	after := make([]uint64, len(txs))
-	for i, tx := range txs {
-		after[i] = state.GetBalance(*tx.To()).Uint64()
-	}
-
-	for i := 0; i < len(txs); i++ {
-		if before[i] != after[i] {
-			log.Warn("the account balance error", "before", before[i], "after", after[i])
-		}
-	}
-
 	cbft.log.Debug("Finalize block", "hash", header.Hash(), "number", header.Number, "txs", len(txs), "receipts", len(receipts), "root", header.Root.String())
+
+	//todo: to remove
+	log.Debug("dump accounts", "blockNumber", header.Number.Uint64(), "dump:", string(state.Dump()))
+
 	return types.NewBlock(header, txs, receipts), nil
 }
 
