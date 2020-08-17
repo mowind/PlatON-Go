@@ -6,12 +6,20 @@ import (
 	"sync"
 	"time"
 
+	lru "github.com/hashicorp/golang-lru"
 	"github.com/panjf2000/ants/v2"
 
+	"github.com/PlatONnetwork/PlatON-Go/common"
+	"github.com/PlatONnetwork/PlatON-Go/core/state"
 	"github.com/PlatONnetwork/PlatON-Go/core/types"
 	"github.com/PlatONnetwork/PlatON-Go/core/vm"
 	"github.com/PlatONnetwork/PlatON-Go/log"
 	"github.com/PlatONnetwork/PlatON-Go/params"
+)
+
+const (
+	// Number of contractAddress->bool associations to keep.
+	contractCacheSize = 100000
 )
 
 var (
@@ -25,7 +33,9 @@ type Executor struct {
 	vmCfg        vm.Config
 	signer       types.Signer
 
-	workerPool *ants.PoolWithFunc
+	workerPool    *ants.PoolWithFunc
+	contractCache *lru.Cache
+	txpool        *TxPool
 }
 
 type TaskArgs struct {
@@ -34,7 +44,7 @@ type TaskArgs struct {
 	intrinsicGas uint64
 }
 
-func NewExecutor(chainConfig *params.ChainConfig, chainContext ChainContext, vmCfg vm.Config) {
+func NewExecutor(chainConfig *params.ChainConfig, chainContext ChainContext, vmCfg vm.Config, txpool *TxPool) {
 	executorOnce.Do(func() {
 		log.Info("Init parallel executor ...")
 		executor = Executor{}
@@ -50,6 +60,9 @@ func NewExecutor(chainConfig *params.ChainConfig, chainContext ChainContext, vmC
 		executor.chainContext = chainContext
 		executor.signer = types.NewEIP155Signer(chainConfig.ChainID)
 		executor.vmCfg = vmCfg
+		csc, _ := lru.New(contractCacheSize)
+		executor.contractCache = csc
+		executor.txpool = txpool
 	})
 }
 
@@ -65,7 +78,11 @@ func (exe *Executor) ExecuteTransactions(ctx *ParallelContext) error {
 	if len(ctx.txList) > 0 {
 		txDag := NewTxDag(exe.signer)
 		start := time.Now()
-		if err := txDag.MakeDagGraph(ctx.header.Number.Uint64(), ctx.GetState(), ctx.txList, start); err != nil {
+		// load tx fromAddress from txpool by txHash
+		/*if !ctx.packNewBlock {
+			exe.cacheTxFromAddress(ctx.txList, exe.Signer())
+		}*/
+		if err := txDag.MakeDagGraph(ctx.header.Number.Uint64(), ctx.GetState(), ctx.txList, exe); err != nil {
 			return err
 		}
 		log.Trace("Make dag graph cost", "number", ctx.header.Number.Uint64(), "time", time.Since(start))
@@ -92,7 +109,7 @@ func (exe *Executor) ExecuteTransactions(ctx *ParallelContext) error {
 
 						from := tx.FromAddr(exe.signer)
 						if _, popped := ctx.poppedAddresses[from]; popped {
-							log.Debug("Address popped", "from", from.Hex())
+							log.Debug("Address popped", "from", from.Bech32())
 							continue
 						}
 					}
@@ -129,6 +146,14 @@ func (exe *Executor) ExecuteTransactions(ctx *ParallelContext) error {
 		log.Trace("Finalise stateDB cost", "number", ctx.header.Number, "time", time.Since(start))
 	}
 
+	/*
+		// dag print info
+		logVerbosity := debug.GetLogVerbosity()
+		if logVerbosity == log.LvlTrace {
+			inf := ctx.txListInfo()
+			log.Trace("TxList Info", "blockNumber", ctx.header.Number, "txList", inf)
+		}
+	*/
 	return nil
 }
 
@@ -144,6 +169,12 @@ func (exe *Executor) executeParallelTx(ctx *ParallelContext, idx int, intrinsicG
 		ctx.buildTransferFailedResult(idx, err, true)
 		return
 	}
+
+	if msg.Gas() < intrinsicGas {
+		ctx.buildTransferFailedResult(idx, vm.ErrOutOfGas, true)
+		return
+	}
+
 	start := time.Now()
 	fromObj := ctx.GetState().GetOrNewParallelStateObject(msg.From())
 	if start.Add(30 * time.Millisecond).Before(time.Now()) {
@@ -164,11 +195,6 @@ func (exe *Executor) executeParallelTx(ctx *ParallelContext, idx int, intrinsicG
 		return
 	}
 
-	if msg.Gas() < intrinsicGas {
-		ctx.buildTransferFailedResult(idx, vm.ErrOutOfGas, true)
-		return
-	}
-
 	minerEarnings := new(big.Int).Mul(new(big.Int).SetUint64(intrinsicGas), msg.GasPrice())
 	subTotal := new(big.Int).Add(msg.Value(), minerEarnings)
 	if fromObj.GetBalance().Cmp(subTotal) < 0 {
@@ -179,7 +205,12 @@ func (exe *Executor) executeParallelTx(ctx *ParallelContext, idx int, intrinsicG
 	fromObj.SubBalance(subTotal)
 	fromObj.SetNonce(fromObj.GetNonce() + 1)
 
-	toObj := ctx.GetState().GetOrNewParallelStateObject(*msg.To())
+	var toObj *state.ParallelStateObject
+	if msg.From() == *msg.To() {
+		toObj = fromObj
+	} else {
+		toObj = ctx.GetState().GetOrNewParallelStateObject(*msg.To())
+	}
 	toObj.AddBalance(msg.Value())
 
 	ctx.buildTransferSuccessResult(idx, fromObj, toObj, intrinsicGas, minerEarnings)
@@ -206,3 +237,34 @@ func (exe *Executor) executeContractTransaction(ctx *ParallelContext, idx int) {
 	ctx.AddReceipt(receipt)
 	log.Debug("Execute contract transaction success", "blockNumber", ctx.GetHeader().Number.Uint64(), "txHash", tx.Hash().Hex(), "gasPool", ctx.gp.Gas(), "txGasLimit", tx.Gas(), "gasUsed", receipt.GasUsed)
 }
+
+func (exe *Executor) isContract(address *common.Address, state *state.StateDB) bool {
+	if address == nil { // create contract
+		return true
+	}
+	if cached, ok := exe.contractCache.Get(*address); ok {
+		return cached.(bool)
+	}
+	isContract := vm.IsPrecompiledContract(*address) || state.GetCodeSize(*address) > 0
+	//if isContract {
+	//	exe.contractCache.Add(*address, true)
+	//}
+	exe.contractCache.Add(*address, isContract)
+	return isContract
+}
+
+/*// load tx fromAddress from txpool by txHash
+func (exe *Executor) cacheTxFromAddress(txs []*types.Transaction, signer types.Signer) {
+	hit := 0
+	for _, tx := range txs {
+		txpool_tx := exe.txpool.all.Get(tx.Hash())
+		if txpool_tx != nil {
+			fromAddress := txpool_tx.FromAddr(signer)
+			if fromAddress != (common.Address{}) {
+				tx.CacheFromAddr(signer, fromAddress)
+				hit++
+			}
+		}
+	}
+	log.Debug("Parallel execute cacheTxFromAddress", "hit", hit, "total", len(txs))
+}*/

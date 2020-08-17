@@ -1,10 +1,13 @@
 package core
 
 import (
-	"github.com/PlatONnetwork/PlatON-Go/log"
+	"bytes"
+	"fmt"
 	"math/big"
 	"sync"
 	"time"
+
+	"github.com/PlatONnetwork/PlatON-Go/log"
 
 	"github.com/PlatONnetwork/PlatON-Go/common"
 	"github.com/PlatONnetwork/PlatON-Go/core/state"
@@ -193,9 +196,9 @@ func (ctx *ParallelContext) buildTransferSuccessResult(idx int, fromStateObject,
 		err:             nil,
 	}
 	ctx.SetResult(idx, result)
-	log.Debug("Execute trasnfer success", "blockNumber", ctx.header.Number.Uint64(), "txIdx", idx, "txHash", tx.Hash().TerminalString(),
+	/*	log.Debug("Execute trasnfer success", "blockNumber", ctx.header.Number.Uint64(), "txIdx", idx, "txHash", tx.Hash().TerminalString(),
 		"gasPool", ctx.gp.Gas(), "txGasLimit", tx.Gas(), "txUsedGas", txGasUsed, "txFrom", tx.FromAddr(ctx.signer).String(), "txTo", tx.To().String(),
-		"txValue", tx.Value().Uint64(), "minerEarnings", minerEarnings.Uint64())
+		"txValue", tx.Value().Uint64(), "minerEarnings", minerEarnings.Uint64())*/
 }
 
 func (ctx *ParallelContext) batchMerge(batchNo int, originIdxList []int, deleteEmptyObjects bool) {
@@ -209,17 +212,13 @@ func (ctx *ParallelContext) batchMerge(batchNo int, originIdxList []int, deleteE
 				// Set the receipt logs and create a bloom for filtering
 				// reset log's logIndex and txIndex
 				receipt := resultList[idx].receipt
-				//tx := ctx.GetTx(idx)
 
 				//total with all txs(not only all parallel txs)
 				ctx.CumulateBlockGasUsed(receipt.GasUsed)
-				//log.Debug("tx packed success", "txHash", exe.ctx.GetTx(idx).Hash().Hex(), "txUsedGas", receipt.GasUsed)
 
 				//reset receipt.CumulativeGasUsed
 				receipt.CumulativeGasUsed = ctx.GetBlockGasUsed()
 
-				//receipt.Logs = originState.GetLogs(exe.ctx.GetTx(idx).Hash())
-				//receipt.Bloom = types.CreateBloom(types.Receipts{receipt})
 				ctx.AddReceipt(resultList[idx].receipt)
 
 				ctx.AddPackedTx(ctx.GetTx(idx))
@@ -229,13 +228,6 @@ func (ctx *ParallelContext) batchMerge(batchNo int, originIdxList []int, deleteE
 				// Cumulate the miner's earnings
 				ctx.AddEarnings(resultList[idx].minerEarnings)
 
-				// if transfer ok, needn't refund to gasPool
-				/*if tx.Gas() >= receipt.GasUsed {
-					ctx.AddGasPool(tx.Gas() - receipt.GasUsed)
-				} else {
-					log.Error("gas < gasUsed", "txIdx", idx, "gas", tx.Gas(), "gasUsed", receipt.GasUsed)
-					panic("gas < gasUsed")
-				}*/
 			} else {
 				if resultList[idx].needRefundGasPool {
 					tx := ctx.GetTx(idx)
@@ -251,4 +243,15 @@ func (ctx *ParallelContext) batchMerge(batchNo int, originIdxList []int, deleteE
 			}
 		}
 	}
+}
+
+func (ctx *ParallelContext) txListInfo() string {
+	var buffer bytes.Buffer
+	if len(ctx.txList) > 0 {
+		for i, tx := range ctx.txList {
+			buffer.WriteString(fmt.Sprintf("index:%d, from:%s, to:%s, value:%s, nonce:%d, data:%s \n ",
+				i, tx.FromAddr(ctx.signer), tx.To(), tx.Value().String(), tx.Nonce(), common.Bytes2Hex(tx.Data())))
+		}
+	}
+	return buffer.String()
 }

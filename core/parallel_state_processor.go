@@ -1,13 +1,14 @@
 package core
 
 import (
+	"time"
+
 	"github.com/PlatONnetwork/PlatON-Go/consensus"
 	"github.com/PlatONnetwork/PlatON-Go/core/state"
 	"github.com/PlatONnetwork/PlatON-Go/core/types"
 	"github.com/PlatONnetwork/PlatON-Go/core/vm"
 	"github.com/PlatONnetwork/PlatON-Go/log"
 	"github.com/PlatONnetwork/PlatON-Go/params"
-	"time"
 )
 
 type ParallelStateProcessor struct {
@@ -41,7 +42,20 @@ func (p *ParallelStateProcessor) Process(block *types.Block, statedb *state.Stat
 			return nil, nil, 0, err
 		}
 	}
-
+	if block.CalTxFromCH != nil {
+		tasks := cap(block.CalTxFromCH)
+		timeout := time.NewTimer(time.Second)
+		for tasks > 0 {
+			select {
+			case <-block.CalTxFromCH:
+				tasks--
+			case <-timeout.C:
+				log.Error("Parallel cal tx from time out")
+				tasks = 0
+			}
+		}
+		timeout.Stop()
+	}
 	// Iterate over and process the individual transactions
 	if len(block.Transactions()) > 0 {
 		start := time.Now()
@@ -67,6 +81,7 @@ func (p *ParallelStateProcessor) Process(block *types.Block, statedb *state.Stat
 	}
 
 	// Finalize the block, applying any consensus engine specific extras (e.g. block rewards)
-	p.engine.Finalize(p.bc, header, statedb, block.Transactions(), receipts)
+	//p.engine.Finalize(p.bc, header, statedb, block.Transactions(), receipts)
+	statedb.IntermediateRoot(true)
 	return receipts, allLogs, *usedGas, nil
 }
