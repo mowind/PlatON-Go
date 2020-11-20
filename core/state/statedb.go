@@ -776,7 +776,9 @@ func (db *StateDB) MigrateStorage(from, to common.Address) {
 		// replace storageRootHash
 		toObj.data.Root = fromObj.data.Root
 		// replace storageTrie
-		toObj.trie = db.db.CopyTrie(fromObj.trie)
+		if nil != fromObj.trie {
+			toObj.trie = db.db.CopyTrie(fromObj.trie)
+		}
 		// replace storage
 		toObj.dirtyStorage = fromObj.dirtyStorage.Copy()
 		toObj.originStorage = fromObj.originStorage.Copy()
@@ -911,8 +913,8 @@ func (s *StateDB) Finalise(deleteEmptyObjects bool) {
 		} else {
 			stateObject.updateRoot(s.db)
 			s.updateStateObject(stateObject)
-			log.Trace("Finalise single", "address", stateObject.address.String(), "balance", stateObject.Balance().Uint64(), "nonce", stateObject.Nonce(),
-				"codeHash", common.Bytes2Hex(stateObject.CodeHash()), "storageRoot", stateObject.data.Root.String(), "storageKeyPrefix", common.Bytes2Hex(stateObject.data.StorageKeyPrefix))
+			/*	log.Trace("Finalise single", "address", stateObject.address.String(), "balance", stateObject.Balance().Uint64(), "nonce", stateObject.Nonce(),
+				"codeHash", common.Bytes2Hex(stateObject.CodeHash()), "storageRoot", stateObject.data.Root.String(), "storageKeyPrefix", common.Bytes2Hex(stateObject.data.StorageKeyPrefix))*/
 		}
 		s.stateObjectsDirty[addr] = struct{}{}
 	}

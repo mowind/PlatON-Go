@@ -115,7 +115,7 @@ type BlockChain struct {
 	chainSideFeed event.Feed
 	chainHeadFeed event.Feed
 
-	BlockTxsFeed event.Feed
+	BlockFeed event.Feed
 
 	logsFeed     event.Feed
 	scope        event.SubscriptionScope
@@ -1104,7 +1104,7 @@ func (bc *BlockChain) WriteBlockWithState(block *types.Block, receipts []*types.
 
 	}
 	bc.futureBlocks.Remove(block.Hash())
-
+	bc.blockCache.Add(block.Hash(), block)
 	// Cleanup storage
 	if !bc.cacheConfig.DBDisabledGC.IsSet() && bc.cleaner.NeedCleanup() {
 		bc.cleaner.Cleanup()
@@ -1224,11 +1224,11 @@ func (bc *BlockChain) ProcessDirectly(block *types.Block, state *state.StateDB, 
 	start := time.Now()
 	receipts, logs, usedGas, err := bc.processor.Process(block, state, bc.vmConfig)
 	if err != nil {
-		log.Error("Failed to ProcessDirectly", "blockNumber", block.Number(), "blockHash", block.Hash().Hex(), "err", err)
+		log.Error("Failed to ProcessDirectly", "blockNumber", block.Number(), "blockHash", block.Hash(), "err", err)
 		bc.reportBlock(block, receipts, err)
 		return nil, err
 	}
-	log.Debug("Execute block time", "blockNumber", block.Number(), "blockHash", block.Hash().Hex(), "time", time.Since(start))
+	log.Debug("Execute block time", "blockNumber", block.Number(), "blockHash", block.Hash(), "time", time.Since(start))
 
 	// Validate the state using the default validator
 	err = bc.Validator().ValidateState(block, parent, state, receipts, usedGas)
@@ -1240,7 +1240,7 @@ func (bc *BlockChain) ProcessDirectly(block *types.Block, state *state.StateDB, 
 	if logs != nil {
 		bc.logsFeed.Send(logs)
 	}
-	bc.BlockTxsFeed.Send(block.Transactions())
+	bc.BlockFeed.Send(block)
 
 	return receipts, nil
 }
@@ -1624,9 +1624,9 @@ func (bc *BlockChain) SubscribeLogsEvent(ch chan<- []*types.Log) event.Subscript
 	return bc.scope.Track(bc.logsFeed.Subscribe(ch))
 }
 
-// SubscribeLogsEvent registers a subscription of []*types.Log.
-func (bc *BlockChain) SubscribeBlockTxsEvent(ch chan<- types.Transactions) event.Subscription {
-	return bc.scope.Track(bc.BlockTxsFeed.Subscribe(ch))
+// SubscribeLogsEvent registers a subscription of *types.Block.
+func (bc *BlockChain) SubscribeBlocksEvent(ch chan<- *types.Block) event.Subscription {
+	return bc.scope.Track(bc.BlockFeed.Subscribe(ch))
 }
 
 // EnableDBGC enable database garbage collection.
