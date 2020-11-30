@@ -141,10 +141,6 @@ var (
 		Name:  "testnet",
 		Usage: "Testnet network: pre-configured test network",
 	}
-	DemonetFlag = cli.BoolFlag{
-		Name:  "demonet",
-		Usage: "Demonet network: pre-configured demo network",
-	}
 	DeveloperPeriodFlag = cli.IntFlag{
 		Name:  "dev.period",
 		Usage: "Block period to use in developer mode (0 = mine only if transaction pending)",
@@ -630,8 +626,6 @@ func MakeDataDir(ctx *cli.Context) string {
 
 		if ctx.GlobalBool(TestnetFlag.Name) {
 			return filepath.Join(path, "testnet")
-		} else if ctx.GlobalBool(DemonetFlag.Name) {
-			return filepath.Join(path, "demonet")
 		}
 		return path
 	}
@@ -686,8 +680,6 @@ func setBootstrapNodes(ctx *cli.Context, cfg *p2p.Config) {
 		}
 	case ctx.GlobalBool(TestnetFlag.Name):
 		urls = params.TestnetBootnodes
-	case ctx.GlobalBool(DemonetFlag.Name):
-		urls = params.DemonetBootnodes
 	case cfg.BootstrapNodes != nil:
 		return // already set, don't apply defaults.
 	}
@@ -955,8 +947,6 @@ func SetNodeConfig(ctx *cli.Context, cfg *node.Config) {
 		cfg.DataDir = ctx.GlobalString(DataDirFlag.Name)
 	case ctx.GlobalBool(TestnetFlag.Name):
 		cfg.DataDir = filepath.Join(node.DefaultDataDir(), "testnet")
-	case ctx.GlobalBool(DemonetFlag.Name):
-		cfg.DataDir = filepath.Join(node.DefaultDataDir(), "demonet")
 	}
 
 	if ctx.GlobalIsSet(KeyStoreDirFlag.Name) {
@@ -1193,12 +1183,6 @@ func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *eth.Config) {
 			cfg.NetworkId = 2000
 		}
 		cfg.Genesis = core.DefaultTestnetGenesisBlock()
-	// Demo NetWork
-	case ctx.GlobalBool(DemonetFlag.Name):
-		if !ctx.GlobalIsSet(NetworkIdFlag.Name) {
-			cfg.NetworkId = 5000
-		}
-		cfg.Genesis = core.DefaultDemonetGenesisBlock()
 	}
 
 	if ctx.GlobalIsSet(DBNoGCFlag.Name) {
@@ -1363,8 +1347,6 @@ func MakeGenesis(ctx *cli.Context) *core.Genesis {
 	switch {
 	case ctx.GlobalBool(TestnetFlag.Name):
 		genesis = core.DefaultTestnetGenesisBlock()
-	case ctx.GlobalBool(DemonetFlag.Name):
-		genesis = core.DefaultDemonetGenesisBlock()
 	}
 	return genesis
 }
@@ -1508,5 +1490,46 @@ func GetEconomicDefaultConfig(ctx *cli.Context) *xcom.EconomicModel {
 		panic("get economic model failed")
 	} else {
 		return model
+	}
+}
+
+// CheckExclusive verifies that only a single instance of the provided flags was
+// set by the user. Each flag might optionally be followed by a string type to
+// specialize it further.
+func CheckExclusive(ctx *cli.Context, args ...interface{}) {
+	set := make([]string, 0, 1)
+	for i := 0; i < len(args); i++ {
+		// Make sure the next argument is a flag and skip if not set
+		flag, ok := args[i].(cli.Flag)
+		if !ok {
+			panic(fmt.Sprintf("invalid argument, not cli.Flag type: %T", args[i]))
+		}
+		// Check if next arg extends current and expand its name if so
+		name := flag.GetName()
+
+		if i+1 < len(args) {
+			switch option := args[i+1].(type) {
+			case string:
+				// Extended flag check, make sure value set doesn't conflict with passed in option
+				if ctx.GlobalString(flag.GetName()) == option {
+					name += "=" + option
+					set = append(set, "--"+name)
+				}
+				// shift arguments and continue
+				i++
+				continue
+
+			case cli.Flag:
+			default:
+				panic(fmt.Sprintf("invalid argument, not cli.Flag or string extension: %T", args[i+1]))
+			}
+		}
+		// Mark the flag if it's set
+		if ctx.GlobalIsSet(flag.GetName()) {
+			set = append(set, "--"+name)
+		}
+	}
+	if len(set) > 1 {
+		Fatalf("Flags %v can't be used at the same time", strings.Join(set, ", "))
 	}
 }
